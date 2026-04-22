@@ -1,0 +1,33 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "eden-sound",
+          "appId": "1:767665758635:android:f75c4f29da465bba50b2ee",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "eden-sound",
+          "configurations": {
+            "android": "1:767665758635:android:f75c4f29da465bba50b2ee",
+            "ios": "1:767665758635:ios:f623b3f64c16c23950b2ee"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "location": "nam5",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  }
+}

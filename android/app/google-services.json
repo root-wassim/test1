@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "767665758635",
+    "project_id": "eden-sound",
+    "storage_bucket": "eden-sound.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:767665758635:android:f75c4f29da465bba50b2ee",
+        "android_client_info": {
+          "package_name": "com.example.edenx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwtOsVf1NI-rCUM1vp9Hzk7XFG6-7NbSo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
