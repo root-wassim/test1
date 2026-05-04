@@ -37,6 +37,8 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_cache_manager: ^3.4.1
   path_provider: ^2.1.5
+  dio: ^5.4.0
+  connectivity_plus: ^6.0.3
 
 dev_dependencies:
   flutter_test:

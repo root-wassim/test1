@@ -1,14 +1,17 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../config/theme.dart';
 import '../models/track.dart';
+import '../services/download_service.dart';
 import '../services/favorites_service.dart';
 import '../services/player_provider.dart';
 import '../services/quran_service.dart';
+import 'downloads_screen.dart';
 import 'now_playing_screen.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -26,6 +29,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Set<String> _favoriteIds = {};
   StreamSubscription<Set<String>>? _favSub;
 
+  // ── Connectivity ────────────────────────────────────────────────────
+  bool _isOnline = true;
+  StreamSubscription<List<ConnectivityResult>>? _connSub;
+
   final _searchCtrl = TextEditingController();
 
   @override
@@ -34,12 +41,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _favSub = FavoritesService.favoriteIdsStream().listen((ids) {
       if (mounted) setState(() => _favoriteIds = ids);
     });
+    // Track connectivity changes
+    _connSub = Connectivity().onConnectivityChanged.listen((results) {
+      final online = results.any((r) => r != ConnectivityResult.none);
+      if (mounted && online != _isOnline) setState(() => _isOnline = online);
+    });
+    // Check initial connectivity
+    Connectivity().checkConnectivity().then((results) {
+      if (mounted) setState(() => _isOnline = results.any((r) => r != ConnectivityResult.none));
+    });
     _load();
   }
 
   @override
   void dispose() {
     _favSub?.cancel();
+    _connSub?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -89,6 +106,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       appBar: AppBar(
         title: const Text('Library'),
         actions: [
+          // ── Offline badge ──────────────────────────────────────────
+          if (!_isOnline)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Center(
+                child: Text('Offline mode 📵',
+                    style: TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+              ),
+            ),
+          // ── Downloads shortcut ─────────────────────────────────────
+          IconButton(
+            icon: const Icon(Icons.download_for_offline_outlined, color: Colors.white70),
+            tooltip: 'Downloads',
+            onPressed: () => Navigator.push(
+              context, MaterialPageRoute(builder: (_) => const DownloadsScreen())),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white54),
             onPressed: _load,
@@ -165,6 +198,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 allCategories: _categories,
                 isExpanded: _isExpanded(filtered[i]),
                 favoriteIds: _favoriteIds,
+                isOnline: _isOnline,
                 onToggle: () => setState(() =>
                 _expandedId = _expandedId == filtered[i].id
                     ? null
@@ -254,13 +288,15 @@ class _CategoryTile extends StatelessWidget {
   final List<Category> allCategories;
   final bool isExpanded;
   final Set<String> favoriteIds;
+  final bool isOnline;
   final VoidCallback onToggle;
 
   const _CategoryTile({
     required this.category,
-    required this.allCategories, // 🔥 ADD
+    required this.allCategories,
     required this.isExpanded,
     required this.favoriteIds,
+    required this.isOnline,
     required this.onToggle,
   });
 
@@ -284,7 +320,6 @@ class _CategoryTile extends StatelessWidget {
               child: const Icon(Icons.menu_book, color: Colors.white, size: 22),
             ),
             title: Row(children: [
-              // Surah number badge
               if (category.tracks.isNotEmpty && category.tracks.first.surahNumber != null) ...[
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -317,10 +352,9 @@ class _CategoryTile extends StatelessWidget {
             const Divider(color: Colors.white12, height: 1),
             ...category.tracks.map((t) => _TrackTile(
               track: t,
-              queue: allCategories
-                  .expand((c) => c.tracks)
-                  .toList(), // ✅ FULL QUEUE
+              queue: allCategories.expand((c) => c.tracks).toList(),
               isFavorite: favoriteIds.contains(t.id),
+              isOnline: isOnline,
             )),
           ],
         ],
@@ -331,30 +365,122 @@ class _CategoryTile extends StatelessWidget {
 
 // ── Track tile ─────────────────────────────────────────────────────────────────
 
-class _TrackTile extends StatelessWidget {
+class _TrackTile extends StatefulWidget {
   final Track track;
   final List<Track> queue;
   final bool isFavorite;
+  final bool isOnline;
 
   const _TrackTile({
     required this.track,
     required this.queue,
     required this.isFavorite,
+    required this.isOnline,
   });
+
+  @override
+  State<_TrackTile> createState() => _TrackTileState();
+}
+
+class _TrackTileState extends State<_TrackTile> {
+  bool _downloaded = false;
+  double? _progress; // null = not downloading
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDownloaded();
+  }
+
+  Future<void> _checkDownloaded() async {
+    final v = await DownloadService.isDownloaded(widget.track.id);
+    if (mounted) setState(() => _downloaded = v);
+  }
+
+  Future<void> _startDownload() async {
+    setState(() => _progress = 0.0);
+    try {
+      await DownloadService.downloadTrack(
+        widget.track,
+        onProgress: (p) { if (mounted) setState(() => _progress = p); },
+      );
+      if (mounted) setState(() { _downloaded = true; _progress = null; });
+    } catch (_) {
+      if (mounted) {
+        setState(() => _progress = null);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Download failed'), backgroundColor: Colors.red));
+      }
+    }
+  }
+
+  Future<void> _deleteDownload() async {
+    await DownloadService.deleteDownload(widget.track.id);
+    if (mounted) setState(() { _downloaded = false; _progress = null; });
+  }
+
+  Widget _buildDownloadButton() {
+    // Downloading in progress
+    if (_progress != null) {
+      return SizedBox(
+        width: 36, height: 36,
+        child: Stack(alignment: Alignment.center, children: [
+          CircularProgressIndicator(
+            value: _progress,
+            strokeWidth: 2.5,
+            color: AppTheme.primary,
+          ),
+          Text(
+            '${((_progress ?? 0) * 100).toInt()}%',
+            style: const TextStyle(color: Colors.white, fontSize: 8),
+          ),
+        ]),
+      );
+    }
+    // Already downloaded
+    if (_downloaded) {
+      return GestureDetector(
+        onLongPress: () async {
+          final del = await showDialog<bool>(
+            context: context,
+            builder: (_) => AlertDialog(
+              backgroundColor: AppTheme.card,
+              title: const Text('Delete download?', style: TextStyle(color: Colors.white)),
+              content: Text('Remove "${widget.track.title}" from device?',
+                  style: const TextStyle(color: Colors.white54)),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel', style: TextStyle(color: Colors.white38))),
+                TextButton(onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Delete', style: TextStyle(color: Colors.red))),
+              ],
+            ),
+          );
+          if (del == true) _deleteDownload();
+        },
+        child: const Icon(Icons.download_done, color: Colors.greenAccent, size: 22),
+      );
+    }
+    // Not downloaded — hide button when offline
+    if (!widget.isOnline) return const SizedBox(width: 36);
+    return IconButton(
+      padding: EdgeInsets.zero,
+      icon: const Icon(Icons.download, color: Colors.white38, size: 22),
+      onPressed: _startDownload,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final player = context.watch<PlayerProvider>();
-    final isPlaying = player.current?.id == track.id;
+    final isPlaying = player.current?.id == widget.track.id;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
       leading: Container(
         width: 36, height: 36,
         decoration: BoxDecoration(
-          color: isPlaying
-              ? AppTheme.primary.withOpacity(0.2)
-              : AppTheme.surface,
+          color: isPlaying ? AppTheme.primary.withOpacity(0.2) : AppTheme.surface,
           shape: BoxShape.circle,
         ),
         child: isPlaying
@@ -362,9 +488,9 @@ class _TrackTile extends StatelessWidget {
             : const Icon(Icons.play_arrow, color: Colors.white38, size: 18),
       ),
       title: Text(
-        track.arabicTitle.isNotEmpty
-            ? '${track.title}  ${track.arabicTitle}'
-            : track.title,
+        widget.track.arabicTitle.isNotEmpty
+            ? '${widget.track.title}  ${widget.track.arabicTitle}'
+            : widget.track.title,
         style: TextStyle(
             color: isPlaying ? AppTheme.primary : Colors.white,
             fontSize: 14,
@@ -373,32 +499,37 @@ class _TrackTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        track.reciter,
+        widget.track.reciter,
         style: const TextStyle(color: Colors.white38, fontSize: 11),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: IconButton(
-        icon: Icon(
-          isFavorite ? Icons.favorite : Icons.favorite_border,
-          color: isFavorite ? AppTheme.accent : Colors.white38,
-          size: 20,
-        ),
-        onPressed: () async {
-          final added = await FavoritesService.toggleFavorite(track);
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(added ? 'Added to favorites ❤️' : 'Removed from favorites'),
-              backgroundColor: added ? AppTheme.primary : Colors.white24,
-              duration: const Duration(seconds: 2),
-            ));
-          }
-        },
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildDownloadButton(),
+          IconButton(
+            icon: Icon(
+              widget.isFavorite ? Icons.favorite : Icons.favorite_border,
+              color: widget.isFavorite ? AppTheme.accent : Colors.white38,
+              size: 20,
+            ),
+            onPressed: () async {
+              final added = await FavoritesService.toggleFavorite(widget.track);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(added ? 'Added to favorites ❤️' : 'Removed from favorites'),
+                  backgroundColor: added ? AppTheme.primary : Colors.white24,
+                  duration: const Duration(seconds: 2),
+                ));
+              }
+            },
+          ),
+        ],
       ),
       onTap: () {
-        context.read<PlayerProvider>().playTrack(track, queue: queue);
-        Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const NowPlayingScreen()));
+        context.read<PlayerProvider>().playTrack(widget.track, queue: widget.queue);
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const NowPlayingScreen()));
       },
     );
   }

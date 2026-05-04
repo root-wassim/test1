@@ -1,8 +1,10 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/track.dart';
 import '../services/stats_service.dart';
+import '../services/download_service.dart';
 
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
@@ -73,11 +75,28 @@ class PlayerProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await _player.setUrl(track.audioUrl);
+      // ── Priority 1: permanent download (plays offline, zero network) ───
+      final localPath = await DownloadService.getLocalPath(track.id);
+      if (localPath != null) {
+        await _player.setFilePath(localPath);
+      } else {
+        // ── Priority 2: flutter_cache_manager (caches on first play) ────
+        // getSingleFile() downloads+caches the file. On repeat plays it
+        // returns the locally-cached copy — enabling casual offline use.
+        final file = await DefaultCacheManager().getSingleFile(track.audioUrl);
+        await _player.setFilePath(file.path);
+      }
       await _player.play();
       _playStartTime = DateTime.now();
     } catch (e) {
-      _error = 'Cannot play track';
+      // ── Priority 3: fallback to direct stream (online only) ─────────
+      try {
+        await _player.setUrl(track.audioUrl);
+        await _player.play();
+        _playStartTime = DateTime.now();
+      } catch (_) {
+        _error = 'Cannot play track. Check your internet connection.';
+      }
     }
 
     _isLoading = false;
