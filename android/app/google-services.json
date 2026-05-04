@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "767665758635",
-    "project_id": "eden-sound",
-    "storage_bucket": "eden-sound.firebasestorage.app"
+    "project_number": "1179889401",
+    "project_id": "music-app-8dada",
+    "storage_bucket": "music-app-8dada.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:767665758635:android:f75c4f29da465bba50b2ee",
+        "mobilesdk_app_id": "1:1179889401:android:b448138191c40193173c28",
         "android_client_info": {
-          "package_name": "com.example.edenx"
+          "package_name": "com.example.music_app"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBwtOsVf1NI-rCUM1vp9Hzk7XFG6-7NbSo"
+          "current_key": "AIzaSyAsWEhyum5J7z_HD3ydBakGPbs9L-quK04"
         }
       ],
       "services": {
