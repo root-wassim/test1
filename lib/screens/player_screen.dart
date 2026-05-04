@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shimmer/shimmer.dart';
 
 import '../config/theme.dart';
 import '../models/track.dart';
@@ -95,7 +96,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+          ? _buildShimmer()
           : Column(
         children: [
           // ── Search bar ──────────────────────────────────────────
@@ -172,6 +173,75 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Returns 7 shimmer list-tile placeholders that mimic the real category layout.
+  Widget _buildShimmer() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.card,
+      highlightColor: AppTheme.surface,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        itemCount: 7,
+        itemBuilder: (_, __) => Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.card,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                // Leading square (mimics gradient icon)
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                // Title + subtitle lines
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 14,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 10,
+                        width: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 14),
+                // Trailing arrow
+                Container(
+                  width: 20, height: 20,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -318,7 +388,7 @@ class _TrackTile extends StatelessWidget {
           final added = await FavoritesService.toggleFavorite(track);
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(added ? 'Added to favorites' : 'Removed from favorites'),
+              content: Text(added ? 'Added to favorites ❤️' : 'Removed from favorites'),
               backgroundColor: added ? AppTheme.primary : Colors.white24,
               duration: const Duration(seconds: 2),
             ));

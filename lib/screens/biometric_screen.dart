@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/biometric_service.dart';
 import '../config/theme.dart';
 import 'auth_gate.dart';
@@ -32,7 +35,12 @@ class _BiometricScreenState extends State<BiometricScreen> {
 
     final hasFingerprint = await BiometricService.hasBiometrics();
     if (!hasFingerprint) {
-      setState(() { _status = 'No fingerprint enrolled. Please set one up in Settings.'; _failed = true; _checking = false; });
+      setState(() {
+        _status = 'No fingerprint enrolled.';
+        _failed = true;
+        _checking = false;
+      });
+      if (mounted) _showEnrollDialog();
       return;
     }
 
@@ -41,12 +49,87 @@ class _BiometricScreenState extends State<BiometricScreen> {
     );
 
     if (success) {
+      // Play success sound & haptic feedback
+      HapticFeedback.mediumImpact();
+      try {
+        final successPlayer = AudioPlayer();
+        await successPlayer.setAsset('assets/sounds/success.wav');
+        await successPlayer.play();
+        await Future.delayed(const Duration(milliseconds: 400));
+        await successPlayer.dispose();
+      } catch (_) {
+        // Sound is optional — don't block navigation
+      }
       if (mounted) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AuthGate()));
       }
     } else {
       setState(() { _status = 'Authentication failed. Try again.'; _failed = true; _checking = false; });
     }
+  }
+
+  /// Shows an AlertDialog when no biometrics are enrolled,
+  /// offering a direct shortcut to the device biometric settings.
+  void _showEnrollDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E2E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.fingerprint, color: AppTheme.primary, size: 28),
+            SizedBox(width: 10),
+            Text('No Fingerprint Found',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: const Text(
+          'No fingerprint is enrolled on this device.\n\n'
+          'To use SoundWave securely, please add a fingerprint in your device settings, then come back.',
+          style: TextStyle(color: Colors.white70, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white38)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.settings, size: 18),
+            label: const Text('Open Settings'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              // Android: security settings, iOS: app settings
+              final uri = Uri.parse('android.settings.SECURITY_SETTINGS');
+              try {
+                final launched = await launchUrl(
+                  Uri.parse('android.settings.BIOMETRIC_ENROLL'),
+                  mode: LaunchMode.externalApplication,
+                );
+                if (!launched) {
+                  await launchUrl(
+                    uri,
+                    mode: LaunchMode.externalApplication,
+                  );
+                }
+              } catch (_) {
+                // Fallback: open general app settings
+                await launchUrl(
+                  Uri.parse('app-settings:'),
+                  mode: LaunchMode.externalApplication,
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   @override
